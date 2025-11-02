@@ -3,18 +3,46 @@
 <head>
   <meta charset="UTF-8">
   <title>Concurrent Simulation Dashboard</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #0e0e0e;
+      color: #eee;
+      text-align: center;
+    }
+    canvas {
+      border: 2px solid #555;
+      background: #111;
+      margin-top: 1rem;
+    }
+  </style>
 </head>
 <body>
   <h1>⚙️ Concurrent Simulation Dashboard</h1>
-  <div id="data"></div>
+  <canvas id="world" width="400" height="400"></canvas>
+  <div id="tick">Tick: 0</div>
 
   <script>
     const ws = new WebSocket("ws://" + location.host + "/ws");
+    const canvas =document.getElementById("world");
+    const ctx = canvas.getContext("2d");
+
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      document.getElementById("data").innerText =
-        `⏰ ${data.time} | Status: ${data.status}`;
+      const agents = JSON.parse(event.data);
+      if (!Array.isArray(agents)) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "lime";
+
+      agents.forEach(a => {
+        const x = (a.x / 100) * canvas.width;
+        const y = (a.y / 100) * canvas.height;
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      document.getElementById("tick").innerText = "Tick: " + agents.length;
     };
   </script>
 </body>

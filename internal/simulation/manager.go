@@ -22,15 +22,21 @@ func NewManager() *Manager {
 }
 
 func (m *Manager) Run() {
-	for {
-		select {
-		case msg := <-m.broadcast:
-			for client := range m.clients {
-				data, _ := json.Marshal(msg)
-				client.WriteMessage(websocket.TextMessage, data)
+	for msg := range m.broadcast {
+		data, _ := json.Marshal(msg)
+		for client := range m.clients {
+			err := client.WriteMessage(websocket.TextMessage, data)
+			if err != nil {
+				log.Println("Error send:", err)
+				client.Close()
+				delete(m.clients, client)
 			}
 		}
 	}
+}
+
+func (m *Manager) Broadcast(msg interface{}) {
+	m.broadcast <- msg
 }
 
 var upgrader = websocket.Upgrader{

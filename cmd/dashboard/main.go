@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"text/template"
+	"time"
 
 	"github.com/Shankara130/nonstop-ngoding-november/internal/simulation"
 )
@@ -11,10 +12,20 @@ import (
 var tmpl = template.Must(template.ParseFiles("web/templates/index.html"))
 
 func main() {
+	world := simulation.NewWorld(100, 100, 10)
 	manager := simulation.NewManager()
+
 	go manager.Run()
+	go simulation.SimulationLoop(world, 500*time.Millisecond, func(state []map[string]interface{}) {
+		manager.Broadcast(state)
+	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		tmpl, err := template.ParseFiles("web/templates/index.html")
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 		tmpl.Execute(w, nil)
 	})
 
