@@ -6,3 +6,4 @@ Project ini adalah challenge pribadi untuk tetap ngoding setiap hari selama Nove
 
 Day 1 ✅
 Day 2 ✅
+Day 3 ✅

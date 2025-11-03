@@ -26,24 +26,41 @@
     const ws = new WebSocket("ws://" + location.host + "/ws");
     const canvas =document.getElementById("world");
     const ctx = canvas.getContext("2d");
+    const tickEl = document.getElementById("tick");
+
+    ws.onopen = () => console.log("WS connected");
+    ws.onclose = () => console.log("WS closed");
+    ws.onerror = (e) => console.error("WS error:", e);
 
     ws.onmessage = (event) => {
-      const agents = JSON.parse(event.data);
-      if (!Array.isArray(agents)) return;
+      const raw = event.data.toString().trim();
+      raw.split('\n').forEach(chunck => {
+        if (!chunck) return;
+        try {
+          const payload = JSON.parse(chunck);
+          if (payload.type === "snapshot") {
+            renderAgents(payload.agents);
+            tickEl.innerText = "Tick: " + payload.tick;
+          }
+        } catch (err) {
+          console.error("Invalid JSON from ws:", err, chunck);
+        }
+      });
+    };
 
+    function renderAgents(agents) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "lime";
 
       agents.forEach(a => {
         const x = (a.x / 100) * canvas.width;
         const y = (a.y / 100) * canvas.height;
+        const color = `hsl(${(a.id * 47) % 360} 80% 60%)`;
+        ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
         ctx.fill();
       });
-
-      document.getElementById("tick").innerText = "Tick: " + agents.length;
-    };
+    }
   </script>
 </body>
 </html>

@@ -12,20 +12,22 @@ import (
 var tmpl = template.Must(template.ParseFiles("web/templates/index.html"))
 
 func main() {
-	world := simulation.NewWorld(100, 100, 10)
+	world := simulation.NewWorld(100, 100, 25)
 	manager := simulation.NewManager()
 
 	go manager.Run()
-	go simulation.SimulationLoop(world, 500*time.Millisecond, func(state []map[string]interface{}) {
-		manager.Broadcast(state)
+
+	go simulation.SimulationLoop(world, 200*time.Millisecond, func(state []map[string]interface{}) {
+		payload := map[string]interface{}{
+			"type":   "snapshot",
+			"tick":   world.Tick,
+			"agents": state,
+		}
+		manager.Broadcast(payload)
 	})
 
+	// routes
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		tmpl, err := template.ParseFiles("web/templates/index.html")
-		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
 		tmpl.Execute(w, nil)
 	})
 
