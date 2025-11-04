@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="../static/css/style.css">
 </head>
 <body>
-  <h1>⚙️ Concurrent Simulation Dashboard</h1>
+  <h1>Concurrent Simulation Dashboard</h1>
   <div id="controls">
     <button id="toggle">⏸️ Pause</button>
     <span id="tick">Tick: 0</span>
@@ -19,8 +19,8 @@
     const ctx = canvas.getContext("2d");
     const tickEl = document.getElementById("tick");
     const toggleBtn = document.getElementById("toggle");
-
     let paused = false;
+    let zones = [];
 
     toggleBtn.onclick = () => {
       paused = !paused;
@@ -36,8 +36,9 @@
         try {
           const payload = JSON.parse(chunck);
           if (payload.type === "snapshot") {
-            renderAgents(payload.agents);
-            tickEl.innerText = "Tick: " + payload.tick;
+            zones = payload.data.zones;
+            renderAgents(payload.data.agents);
+            tickEl.innerText = "Tick: " + payload.data.tick;
           }
         } catch (err) {
           console.error("Invalid JSON from ws:", err, chunck);
@@ -45,31 +46,40 @@
       });
     };
 
+    function renderZones() {
+      zones.forEach(z => {
+        let color;
+        switch (z.type) {
+          case "meet": color = "blue"; break;
+          case "collect": color = "purple"; break;
+          case "rest": color = "green"; break;
+        }
+        ctx.beginPath();
+        ctx.arc((z.x / 100) * canvas.width, (z.y / 100) * canvas.height, z.radius * 2, 0, Math.PI * 2);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+    }
+
     function renderAgents(agents) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      renderZones();
 
       agents.forEach(a => {
         const x = (a.x / 100) * canvas.width;
         const y = (a.y / 100) * canvas.height;
         let color;
-
-        switch (a.state) {
-          case "idle": color = "#aaa"; break;
-          case "moving": color = "#4caf50"; break;
-          case "interact": color = "#ff5722"; break;
-          default: color = "#2196f3";
+        switch (a.goal) {
+          case "explore": color = "gray"; break;
+          case "meet": color = "blue"; break;
+          case "collect": color = "purple"; break;
+          case "rest": color = "green"; break;
         }
-
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
         ctx.fill();
-
-        ctx.strokeStyle = "white";
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + a.dx * 8, y + a.dy * 8);
-        ctx.stroke();
       });
     }
   </script>

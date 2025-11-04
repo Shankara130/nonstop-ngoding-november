@@ -12,18 +12,32 @@ import (
 var tmpl = template.Must(template.ParseFiles("web/templates/index.html"))
 
 func main() {
-	world := simulation.NewWorld(25, 100)
-	manager := simulation.NewManager()
+	world := simulation.NewWorld(100.0)
 
+	// spawn zones with different types
+	for i := 0; i < 20; i++ {
+		world.SpawnAgent(AgentTypeWorker)
+	}
+	for i := 0; i < 10; i++ {
+		world.SpawnAgent(AgentTypeExplorer)
+	}
+	for i := 0; i < 5; i++ {
+		world.SpawnAgent(AgentTypeCollector)
+	}
+	for i := 0; i < 5; i++ {
+		world.SpawnAgent(AgentTypeGuard)
+	}
+
+	// websocket manager
+	manager := NewWSManager()
 	go manager.Run()
 
-	go simulation.SimulationLoop(world, 200*time.Millisecond, func(state []map[string]interface{}) {
-		payload := map[string]interface{}{
-			"type":   "snapshot",
-			"tick":   world.Tick,
-			"agents": state,
-		}
-		manager.Broadcast(payload)
+	// run simulation
+	go world.Run(50*time.Millisecond, func(snapshot *WorldSnapshot) {
+		manager.Broadcast(map[string]interface{}{
+			"type": "snapshot",
+			"data": snapshot,
+		})
 	})
 
 	// routes
@@ -32,7 +46,16 @@ func main() {
 	})
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		simulation.HandleWebSocket(manager, w, r)
+		HandleWebSocket(manager, w, r)
+	})
+
+	http.HandleFunc("/spawn", func(w http.ResponseWriter, r *http.Request) {
+		agentType := r.URL.Query().Get("type")
+		if agentType == "" {
+			agentType = string(AgentTypeWorker)
+		}
+		world.SpawnAgent(AgentType(agentType))
+		w.WriteHeader(http.StatusOK)
 	})
 
 	fs := http.FileServer(http.Dir("web/static"))
