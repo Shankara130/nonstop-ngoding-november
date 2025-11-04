@@ -12,7 +12,7 @@ import (
 var tmpl = template.Must(template.ParseFiles("web/templates/index.html"))
 
 func main() {
-	world := simulation.NewWorld(100, 100, 25)
+	world := simulation.NewWorld(25, 100)
 	manager := simulation.NewManager()
 
 	go manager.Run()

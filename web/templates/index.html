@@ -3,36 +3,33 @@
 <head>
   <meta charset="UTF-8">
   <title>Concurrent Simulation Dashboard</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      background: #0e0e0e;
-      color: #eee;
-      text-align: center;
-    }
-    canvas {
-      border: 2px solid #555;
-      background: #111;
-      margin-top: 1rem;
-    }
-  </style>
+  <link rel="stylesheet" href="../static/css/style.css">
 </head>
 <body>
   <h1>⚙️ Concurrent Simulation Dashboard</h1>
-  <canvas id="world" width="400" height="400"></canvas>
-  <div id="tick">Tick: 0</div>
+  <div id="controls">
+    <button id="toggle">⏸️ Pause</button>
+    <span id="tick">Tick: 0</span>
+  </div>
+  <canvas id="world" width="500" height="500"></canvas>
 
   <script>
     const ws = new WebSocket("ws://" + location.host + "/ws");
     const canvas =document.getElementById("world");
     const ctx = canvas.getContext("2d");
     const tickEl = document.getElementById("tick");
+    const toggleBtn = document.getElementById("toggle");
 
-    ws.onopen = () => console.log("WS connected");
-    ws.onclose = () => console.log("WS closed");
-    ws.onerror = (e) => console.error("WS error:", e);
+    let paused = false;
+
+    toggleBtn.onclick = () => {
+      paused = !paused;
+      toggleBtn.innerText = paused ? "▶️ Start" : "⏸️ Pause";
+    };
 
     ws.onmessage = (event) => {
+      if (paused) return;
+
       const raw = event.data.toString().trim();
       raw.split('\n').forEach(chunck => {
         if (!chunck) return;
@@ -54,11 +51,25 @@
       agents.forEach(a => {
         const x = (a.x / 100) * canvas.width;
         const y = (a.y / 100) * canvas.height;
-        const color = `hsl(${(a.id * 47) % 360} 80% 60%)`;
+        let color;
+
+        switch (a.state) {
+          case "idle": color = "#aaa"; break;
+          case "moving": color = "#4caf50"; break;
+          case "interact": color = "#ff5722"; break;
+          default: color = "#2196f3";
+        }
+
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
         ctx.fill();
+
+        ctx.strokeStyle = "white";
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + a.dx * 8, y + a.dy * 8);
+        ctx.stroke();
       });
     }
   </script>

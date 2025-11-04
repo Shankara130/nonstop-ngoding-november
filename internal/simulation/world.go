@@ -1,65 +1,40 @@
 package simulation
 
-import (
-	"fmt"
-	"math/rand"
-	"sync"
-)
-
 type World struct {
-	Width, Height float64
-	Tick          int
-	Agents        []*Agent
-	mu            sync.Mutex
+	Agents []*Agent `json:"agents"`
+	Size   float64  `json:"size"`
+	Tick   int      `json:"tick"`
 }
 
-func NewWorld(width, height float64, numAgents int) *World {
-	world := &World{
-		Width:  width,
-		Height: height,
-		Agents: make([]*Agent, 0, numAgents),
+func NewWorld(agentCount int, size float64) *World {
+	agents := make([]*Agent, agentCount)
+	for i := range agents {
+		agents[i] = NewAgent(i, size)
 	}
-
-	for i := 0; i < numAgents; i++ {
-		a := &Agent{
-			ID:   i,
-			Name: fmt.Sprintf("Agent-%d", i),
-			X:    randFloat(0, width),
-			Y:    randFloat(0, height),
-		}
-		world.Agents = append(world.Agents, a)
-	}
-
-	return world
+	return &World{Agents: agents, Size: size}
 }
 
 func (w *World) Update() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	for _, agent := range w.Agents {
-		agent.Move(w.Width, w.Height)
-	}
-
 	w.Tick++
+	for _, a := range w.Agents {
+		a.Update(1.0, w.Size)
+	}
+	for _, a := range w.Agents {
+		a.CheckInteraction(w.Agents)
+	}
 }
 
 func (w *World) Snapshot() []map[string]interface{} {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	result := []map[string]interface{}{}
-	for _, a := range w.Agents {
-		result = append(result, map[string]interface{}{
-			"id":   a.ID,
-			"name": a.Name,
-			"x":    a.X,
-			"y":    a.Y,
-		})
+	snap := make([]map[string]interface{}, len(w.Agents))
+	for i, a := range w.Agents {
+		snap[i] = map[string]interface{}{
+			"id":    a.ID,
+			"x":     a.X,
+			"y":     a.Y,
+			"dx":    a.DX,
+			"dy":    a.DY,
+			"state": a.State,
+		}
 	}
-	return result
-}
-
-func randFloat(min, max float64) float64 {
-	return min + (max-min)*float64(rand.Intn(1000))/1000.0
+	return snap
 }
