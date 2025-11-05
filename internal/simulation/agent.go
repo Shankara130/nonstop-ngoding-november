@@ -6,159 +6,254 @@ import (
 	"time"
 )
 
-type Goal string
-type State string
+type AgentType string
 
 const (
-	GoalExplore Goal = "explore"
-	GoalMeet    Goal = "meet"
-	GoalCollect Goal = "collect"
-	GoalRest    Goal = "rest"
+	AgentTypeWorker    AgentType = "worker"
+	AgentTypeExplorer  AgentType = "explorer"
+	AgentTypeCollector AgentType = "collector"
+	AgentTypeGuard     AgentType = "guard"
 )
 
+type AgentState string
+
 const (
-	Idle     State = "idle"
-	Moving   State = "moving"
-	Interact State = "interact"
+	StateIdle       AgentState = "idle"
+	StateMoving     AgentState = "moving"
+	StateCollecting AgentState = "collecting"
+	StateResting    AgentState = "resting"
+	StatePatrolling AgentState = "patrolling"
 )
 
 type Agent struct {
-	ID     int     `json:"id"`
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	DX     float64 `json:"dx"`
-	DY     float64 `json:"dy"`
-	Energy float64 `json:"energy"`
-	Goal   Goal    `json:"goal"`
-	State  State   `json:"state"`
-	Target *Zone   `json:"target,omitempty"`
+	ID        int
+	Type      AgentType
+	X, Y      float64
+	VX, VY    float64
+	Energy    float64
+	MaxEnergy float64
+	Speed     float64
+	State     AgentState
+	Target    interface{}
+	Inventory float64
+	alive     bool
 }
 
-func (a *Agent) distanceTo(x, y float64) float64 {
-	dx := a.X - x
-	dy := a.Y - y
-	return math.Sqrt(dx*dx + dy*dy)
+type AgentSnapshot struct {
+	ID        int        `json:"id"`
+	Type      AgentType  `json:"type"`
+	X         float64    `json:"x"`
+	Y         float64    `json:"y"`
+	Energy    float64    `json:"energy"`
+	MaxEnergy float64    `json:"maxEnergy"`
+	State     AgentState `json:"state"`
+	Inventory float64    `json:"inventory"`
 }
 
-func (a *Agent) moveTo(target *Zone, dt float64) {
-	if target == nil {
-		return
+func NewAgent(id int, worldSize float64, agentType AgentType) *Agent {
+	a := &Agent{
+		ID:        id,
+		Type:      agentType,
+		X:         rand.Float64() * worldSize,
+		Y:         rand.Float64() * worldSize,
+		MaxEnergy: 100,
+		Energy:    100,
+		State:     StateIdle,
+		alive:     true,
 	}
-	dx := target.X - a.X
-	dy := target.Y - a.Y
-	dist := math.Sqrt(dx*dx + dy*dy)
-	if dist == 0 {
-		return
+
+	// Set attributes based on agent type
+	switch agentType {
+	case AgentTypeWorker:
+		a.Speed = 8.0
+		a.MaxEnergy = 100
+	case AgentTypeExplorer:
+		a.Speed = 12.0
+		a.MaxEnergy = 150
+	case AgentTypeCollector:
+		a.Speed = 6.0
+		a.MaxEnergy = 120
+	case AgentTypeGuard:
+		a.Speed = 10.0
+		a.MaxEnergy = 200
 	}
-	speed := 10.0
-	step := speed * dt
-	a.DX = dx / dist * step
-	a.DY = dy / dist * step
-	a.X += a.DX
-	a.Y += a.DY
-	a.State = Moving
+
+	a.Energy = a.MaxEnergy
+	return a
 }
 
-func (a *Agent) wander() {
-	a.X += a.DX
-	a.Y += a.DY
-	if rand.Float64() < 0.02 {
-		a.DX = rand.Float64()*2 - 1
-		a.DY = rand.Float64()*2 - 1
-	}
-}
+func (a *Agent) Run(world *World) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 
-func (a *Agent) consumeEnergy() {
-	switch a.State {
-	case Moving:
-		a.Energy -= 0.5
-	case Interact:
-		a.Energy -= 0.2
-	default:
-		a.Energy -= 0.1
-	}
-	if a.Energy < 0 {
-		a.Energy = 0
-	}
-}
+	for a.alive {
+		<-ticker.C
+		a.Update(world, 0.1)
 
-func (a *Agent) reached(z *Zone) bool {
-	if z == nil {
-		return false
-	}
-	return a.distanceTo(z.X, z.Y) < z.Radius
-}
-
-func (a *Agent) Update(world *World) {
-	if a.State == Interact && rand.Float64() < 0.01 {
-		a.State = Idle
-		a.Goal = GoalExplore
-	}
-
-	a.consumeEnergy()
-
-	if a.Energy <= 10 {
-		a.Goal = GoalRest
-		a.Target = world.FindNearestZone(a.X, a.Y, ZoneRest)
-	}
-
-	switch a.Goal {
-	case GoalExplore:
-		a.wander()
-		if rand.Float64() < 0.005 {
-			a.Goal = GoalMeet
-			a.Target = world.FindNearestZone(a.X, a.Y, ZoneMeet)
+		if a.Energy <= 0 {
+			a.alive = false
+			world.RemoveAgent(a.ID)
+			break
 		}
-	case GoalMeet, GoalCollect, GoalRest:
-		a.moveTo(a.Target)
+	}
+}
+
+func (a *Agent) Update(world *World, dt float64) {
+	// consume energy
+	energyCost := 0.05
+	if a.State == StateMoving {
+		energyCost = 0.15
+	}
+	a.Energy -= energyCost
+
+	// behavior based on agent type
+	switch a.Type {
+	case AgentTypeWorker:
+		a.workerBehavior(world, dt)
+	case AgentTypeExplorer:
+		a.explorerBehavior(world, dt)
+	case AgentTypeCollector:
+		a.collectorBehavior(world, dt)
+	case AgentTypeGuard:
+		a.guardBehavior(world, dt)
 	}
 
-	if a.reached(a.Target) {
-		switch a.Target.Type {
-		case ZoneRest:
-			a.Energy = 100
-			a.Goal = GoalExplore
-		case ZoneCollect:
-			a.Energy += 10
-			if a.Energy > 100 {
-				a.Energy = 100
+	// boundary check
+
+	a.X = math.Max(0, math.Min(world.Size, a.X))
+	a.Y = math.Max(0, math.Min(world.Size, a.Y))
+}
+
+func (a *Agent) workerBehavior(world *World, dt float64) {
+	// worker : seek resources and bring them to home base
+	if a.Energy < 30 {
+		a.seekRest(world, dt)
+		return
+	}
+
+	if a.Inventory < 10 {
+		// find food resource
+		target := world.FindNearestResource(a.X, a.Y, ResourceTypeFood)
+		if target != nil {
+			a.moveTo(target.X, target.Y, dt)
+			if a.reachedPoint(target.X, target.Y, 3) {
+				a.State = StateCollecting
+				if world.ConsumeResource(target.ID, 5) {
+					a.Inventory += 5
+				}
 			}
-		case ZoneMeet:
-			a.State = Interact
+		} else {
+			a.wander(dt)
+		}
+	} else {
+		// return to home base
+		home := world.FindNearestZone(a.X, a.Y, ZoneTypeHome)
+		if home != nil {
+			a.moveTo(home.X, home.Y, dt)
+			if a.reachedPoint(home.X, home.Y, home.Radius) {
+				a.Inventory = 0
+				a.Energy = math.Min(a.MaxEnergy, a.Energy+10)
+			}
 		}
 	}
+}
 
-	if a.X < 0 {
-		a.X = 0
-		a.DX *= -1
+func (a *Agent) explorerBehavior(world *World, dt float64) {
+	// explorer : wander map, find new resources
+	if a.Energy < 40 {
+		a.seekRest(world, dt)
+		return
 	}
-	if a.Y < 0 {
-		a.Y = 0
-		a.DY *= -1
+
+	a.wander(dt)
+	a.Speed = 12.0
+}
+
+func (a *Agent) collectorBehavior(world *World, dt float64) {
+	// collector : gather water resources
+	if a.Energy < 25 {
+		a.seekRest(world, dt)
+		return
 	}
-	if a.X > world.Size {
-		a.X = world.Size
-		a.DX *= -1
-	}
-	if a.Y > world.Size {
-		a.Y = world.Size
-		a.DY *= -1
+
+	target := world.FindNearestResource(a.X, a.Y, ResourceTypeWater)
+	if target != nil {
+		a.moveTo(target.X, target.Y, dt)
+		if a.reachedPoint(target.X, target.Y, 3) {
+			a.State = StateCollecting
+			if world.ConsumeResource(target.ID, 3) {
+				a.Energy = math.Min(a.MaxEnergy, a.Energy+5)
+			}
+		}
+	} else {
+		a.wander(dt)
 	}
 }
 
-func NewAgent(id int, worldSize float64) *Agent {
-	return &Agent{
-		ID:     id,
-		X:      rand.Float64() * worldSize,
-		Y:      rand.Float64() * worldSize,
-		DX:     rand.Float64()*2 - 1,
-		DY:     rand.Float64()*2 - 1,
-		Energy: 100,
-		Goal:   GoalExplore,
-		State:  Idle,
+func (a *Agent) guardBehavior(world *World, dt float64) {
+	// guard : patrol around home base
+	home := world.FindNearestZone(a.X, a.Y, ZoneTypeHome)
+	if home != nil {
+		// patrol around home
+		dist := distance(a.X, a.Y, home.X, home.Y)
+		if dist > home.Radius*2 {
+			a.moveTo(home.X, home.Y, dt)
+		} else {
+			a.State = StatePatrolling
+			a.wander(dt)
+		}
 	}
 }
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
+func (a *Agent) seekRest(world *World, dt float64) {
+	a.State = StateResting
+	home := world.FindNearestZone(a.X, a.Y, ZoneTypeHome)
+	if home != nil {
+		a.moveTo(home.X, home.Y, dt)
+		if a.reachedPoint(home.X, home.Y, home.Radius) {
+			a.Energy = math.Min(a.MaxEnergy, a.Energy+1)
+		}
+	}
+}
+
+func (a *Agent) moveTo(tx, ty, dt float64) {
+	dx, dy := tx-a.X, ty-a.Y
+	dist := math.Sqrt(dx*dx + dy*dy)
+	if dist < 0.1 {
+		return
+	}
+
+	a.VX = (dx / dist) * a.Speed
+	a.VY = (dy / dist) * a.Speed
+	a.X += a.VX * dt
+	a.Y += a.VY * dt
+	a.State = StateMoving
+}
+
+func (a *Agent) wander(dt float64) {
+	if rand.Float64() < 0.05 {
+		angle := rand.Float64() * 2 * math.Pi
+		a.VX = math.Cos(angle) * a.Speed
+		a.VY = math.Sin(angle) * a.Speed
+	}
+	a.X += a.VX * dt
+	a.Y += a.VY * dt
+	a.State = StateMoving
+}
+
+func (a *Agent) reachedPoint(x, y, threshold float64) bool {
+	return distance(a.X, a.Y, x, y) < threshold
+}
+
+func (a *Agent) Snapshot() AgentSnapshot {
+	return AgentSnapshot{
+		ID:        a.ID,
+		Type:      a.Type,
+		X:         a.X,
+		Y:         a.Y,
+		Energy:    a.Energy,
+		MaxEnergy: a.MaxEnergy,
+		State:     a.State,
+		Inventory: a.Inventory,
+	}
 }

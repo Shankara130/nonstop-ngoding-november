@@ -16,16 +16,16 @@ func main() {
 
 	// spawn zones with different types
 	for i := 0; i < 20; i++ {
-		world.SpawnAgent(AgentTypeWorker)
+		world.SpawnAgent(simulation.AgentTypeWorker)
 	}
 	for i := 0; i < 10; i++ {
-		world.SpawnAgent(AgentTypeExplorer)
+		world.SpawnAgent(simulation.AgentTypeExplorer)
 	}
 	for i := 0; i < 5; i++ {
-		world.SpawnAgent(AgentTypeCollector)
+		world.SpawnAgent(simulation.AgentTypeCollector)
 	}
 	for i := 0; i < 5; i++ {
-		world.SpawnAgent(AgentTypeGuard)
+		world.SpawnAgent(simulation.AgentTypeGuard)
 	}
 
 	// websocket manager
@@ -52,9 +52,9 @@ func main() {
 	http.HandleFunc("/spawn", func(w http.ResponseWriter, r *http.Request) {
 		agentType := r.URL.Query().Get("type")
 		if agentType == "" {
-			agentType = string(AgentTypeWorker)
+			agentType = string(simulation.AgentTypeWorker)
 		}
-		world.SpawnAgent(AgentType(agentType))
+		world.SpawnAgent(simulation.AgentType(agentType))
 		w.WriteHeader(http.StatusOK)
 	})
 
