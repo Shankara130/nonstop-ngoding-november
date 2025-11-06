@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Shankara130/nonstop-ngoding-november/internal/simulation"
+	"github.com/Shankara130/nonstop-ngoding-november/internal/websocket"
 )
 
 var tmpl = template.Must(template.ParseFiles("web/templates/index.html"))
@@ -29,11 +30,11 @@ func main() {
 	}
 
 	// websocket manager
-	manager := NewWSManager()
+	manager := websocket.NewWSManager()
 	go manager.Run()
 
 	// run simulation
-	go world.Run(50*time.Millisecond, func(snapshot *WorldSnapshot) {
+	go world.Run(50*time.Millisecond, func(snapshot *simulation.WorldSnapshot) {
 		manager.Broadcast(map[string]interface{}{
 			"type": "snapshot",
 			"data": snapshot,
@@ -46,7 +47,7 @@ func main() {
 	})
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		HandleWebSocket(manager, w, r)
+		websocket.HandleWebSocket(manager, w, r)
 	})
 
 	http.HandleFunc("/spawn", func(w http.ResponseWriter, r *http.Request) {

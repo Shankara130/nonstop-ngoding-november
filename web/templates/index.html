@@ -2,85 +2,273 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Concurrent Simulation Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-time Ecosystem Simulation</title>
   <link rel="stylesheet" href="../static/css/style.css">
 </head>
 <body>
-  <h1>Concurrent Simulation Dashboard</h1>
-  <div id="controls">
-    <button id="toggle">⏸️ Pause</button>
-    <span id="tick">Tick: 0</span>
+  <div class="container">
+    <header>
+      <h1>🌍 Real-time Ecosystem Simulation</h1>
+      <div class="status">
+        <span class="status-dot"></span>
+        <span id="connectionStatus">Connecting...</span>
+      </div>
+    </header>
+
+    <div class="dashboard">
+      <div class="simulation-panel">
+        <div class="controls">
+          <button class="btn-primary" id="toggleBtn">⏸️ Pause</button>
+          <button class="btn-secondary" id="resetBtn">🔄 Reset View</button>
+          <button class="btn-secondary" id="speedBtn">⚡ Speed: 1x</button>
+        </div>
+        <canvas id="world"></canvas>
+      </div>
+
+      <div class="sidebar">
+        <div class="stats-panel">
+          <div class="panel-title">📊 Statistics</div>
+          <div class="stat-item">
+            <span class="stat-label">Tick</span>
+            <span class="stat-value" id="tickCount">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Total Agents</span>
+            <span class="stat-value" id="agentCount">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Resources</span>
+            <span class="stat-value" id="resourceCount">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Avg Energy</span>
+            <span class="stat-value" id="avgEnergy">0</span>
+          </div>
+          <div class="energy-bar">
+            <div class="energy-fill" id="energyBar" style="width: 100%"></div>
+          </div>
+        </div>
+
+        <div class="legend-panel">
+          <div class="panel-title">🎨 Agent Types</div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #4CAF50"></div>
+            <span class="legend-text">Worker</span>
+            <span class="legend-count" id="workerCount">0</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #2196F3"></div>
+            <span class="legend-text">Explorer</span>
+            <span class="legend-count" id="explorerCount">0</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #FF9800"></div>
+            <span class="legend-text">Collector</span>
+            <span class="legend-count" id="collectorCount">0</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #F44336"></div>
+            <span class="legend-text">Guard</span>
+            <span class="legend-count" id="guardCount">0</span>
+          </div>
+        </div>
+
+        <div class="legend-panel">
+          <div class="panel-title">➕ Spawn Agents</div>
+          <div class="spawn-controls">
+            <button class="spawn-btn" onclick="spawnAgent('worker')">👷 Worker</button>
+            <button class="spawn-btn" onclick="spawnAgent('explorer')">🔍 Explorer</button>
+            <button class="spawn-btn" onclick="spawnAgent('collector')">📦 Collector</button>
+            <button class="spawn-btn" onclick="spawnAgent('guard')">🛡️ Guard</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-  <canvas id="world" width="500" height="500"></canvas>
 
   <script>
-    const ws = new WebSocket("ws://" + location.host + "/ws");
-    const canvas =document.getElementById("world");
-    const ctx = canvas.getContext("2d");
-    const tickEl = document.getElementById("tick");
-    const toggleBtn = document.getElementById("toggle");
-    let paused = false;
-    let zones = [];
+    const canvas = document.getElementById('world');
+    const ctx = canvas.getContext('2d');
+    const toggleBtn = document.getElementById('toggleBtn');
+    const speedBtn = document.getElementById('speedBtn');
+    const statusEl = document.getElementById('connectionStatus');
 
-    toggleBtn.onclick = () => {
-      paused = !paused;
-      toggleBtn.innerText = paused ? "▶️ Start" : "⏸️ Pause";
+    let paused = false;
+    let speed = 1;
+    let worldSize = 100;
+    let zones = [];
+    let scale = 1;
+
+    // WebSocket connection
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+
+    ws.onopen = () => {
+      statusEl.textContent = 'Connected';
+      statusEl.style.color = '#00ff88';
+    };
+
+    ws.onclose = () => {
+      statusEl.textContent = 'Disconnected';
+      statusEl.style.color = '#ff4444';
+    };
+
+    ws.onerror = () => {
+      statusEl.textContent = 'Connection Error';
+      statusEl.style.color = '#ff9800';
     };
 
     ws.onmessage = (event) => {
       if (paused) return;
 
-      const raw = event.data.toString().trim();
-      raw.split('\n').forEach(chunck => {
-        if (!chunck) return;
-        try {
-          const payload = JSON.parse(chunck);
-          if (payload.type === "snapshot") {
-            zones = payload.data.zones;
-            renderAgents(payload.data.agents);
-            tickEl.innerText = "Tick: " + payload.data.tick;
-          }
-        } catch (err) {
-          console.error("Invalid JSON from ws:", err, chunck);
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === 'snapshot') {
+          render(payload.data);
+          updateStats(payload.data);
         }
-      });
+      } catch (err) {
+        console.error('Parse error:', err);
+      }
     };
 
-    function renderZones() {
+    // Controls
+    toggleBtn.onclick = () => {
+      paused = !paused;
+      toggleBtn.textContent = paused ? '▶️ Resume' : '⏸️ Pause';
+      toggleBtn.className = paused ? 'btn-secondary' : 'btn-primary';
+    };
+
+    speedBtn.onclick = () => {
+      speed = speed === 1 ? 2 : speed === 2 ? 0.5 : 1;
+      speedBtn.textContent = `⚡ Speed: ${speed}x`;
+    };
+
+    function spawnAgent(type) {
+      fetch(`/spawn?type=${type}`, { method: 'POST' })
+        .catch(err => console.error('Spawn error:', err));
+    }
+
+    // Rendering
+    function render(data) {
+      canvas.width = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+      scale = Math.min(canvas.width, canvas.height) / worldSize;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Background grid
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 10; i++) {
+        const pos = (i / 10) * Math.min(canvas.width, canvas.height);
+        ctx.beginPath();
+        ctx.moveTo(pos, 0);
+        ctx.lineTo(pos, canvas.height);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, pos);
+        ctx.lineTo(canvas.width, pos);
+        ctx.stroke();
+      }
+
+      // Zones
+      zones = data.zones || [];
       zones.forEach(z => {
+        const x = (z.x / worldSize) * canvas.width;
+        const y = (z.y / worldSize) * canvas.height;
+        const r = z.radius * scale;
+
         let color;
         switch (z.type) {
-          case "meet": color = "blue"; break;
-          case "collect": color = "purple"; break;
-          case "rest": color = "green"; break;
+          case 'home': color = 'rgba(76, 175, 80, 0.2)'; break;
+          case 'food': color = 'rgba(255, 193, 7, 0.2)'; break;
+          case 'water': color = 'rgba(33, 150, 243, 0.2)'; break;
+          case 'danger': color = 'rgba(244, 67, 54, 0.2)'; break;
         }
+
+        ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc((z.x / 100) * canvas.width, (z.y / 100) * canvas.height, z.radius * 2, 0, Math.PI * 2);
-        ctx.strokeStyle = color;
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = color.replace('0.2', '0.6');
         ctx.lineWidth = 2;
         ctx.stroke();
       });
-    }
 
-    function renderAgents(agents) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      renderZones();
+      // Resources
+      (data.resources || []).forEach(r => {
+        const x = (r.x / worldSize) * canvas.width;
+        const y = (r.y / worldSize) * canvas.height;
+        const size = Math.max(3, r.amount / 10);
 
-      agents.forEach(a => {
-        const x = (a.x / 100) * canvas.width;
-        const y = (a.y / 100) * canvas.height;
+        ctx.fillStyle = r.type === 0 ? '#FFC107' : '#03A9F4';
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      });
+
+      // Agents
+      (data.agents || []).forEach(a => {
+        const x = (a.x / worldSize) * canvas.width;
+        const y = (a.y / worldSize) * canvas.height;
+
         let color;
-        switch (a.goal) {
-          case "explore": color = "gray"; break;
-          case "meet": color = "blue"; break;
-          case "collect": color = "purple"; break;
-          case "rest": color = "green"; break;
+        switch (a.type) {
+          case 'worker': color = '#4CAF50'; break;
+          case 'explorer': color = '#2196F3'; break;
+          case 'collector': color = '#FF9800'; break;
+          case 'guard': color = '#F44336'; break;
         }
+
+        // Agent body
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
         ctx.fill();
+
+        // Energy ring
+        const energyPct = a.energy / a.maxEnergy;
+        ctx.strokeStyle = energyPct > 0.5 ? '#00ff88' : energyPct > 0.2 ? '#ffaa00' : '#ff4444';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, 7, -Math.PI / 2, -Math.PI / 2 + energyPct * Math.PI * 2);
+        ctx.stroke();
+
+        // State indicator
+        if (a.state === 'collecting') {
+          ctx.fillStyle = '#FFC107';
+          ctx.beginPath();
+          ctx.arc(x, y - 10, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
       });
+    }
+
+    function updateStats(data) {
+      const stats = data.stats || {};
+      document.getElementById('tickCount').textContent = stats.tick || 0;
+      document.getElementById('agentCount').textContent = stats.agentCount || 0;
+      document.getElementById('resourceCount').textContent = stats.resourceCount || 0;
+      
+      const avgEnergy = (stats.avgEnergy || 0).toFixed(1);
+      document.getElementById('avgEnergy').textContent = avgEnergy;
+      document.getElementById('energyBar').style.width = avgEnergy + '%';
+
+      // Count by type
+      const agents = data.agents || [];
+      const counts = { worker: 0, explorer: 0, collector: 0, guard: 0 };
+      agents.forEach(a => counts[a.type]++);
+      
+      document.getElementById('workerCount').textContent = counts.worker;
+      document.getElementById('explorerCount').textContent = counts.explorer;
+      document.getElementById('collectorCount').textContent = counts.collector;
+      document.getElementById('guardCount').textContent = counts.guard;
     }
   </script>
 </body>
